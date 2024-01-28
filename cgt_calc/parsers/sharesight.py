@@ -187,9 +187,9 @@ def parse_trades(
         symbol = f"{market}:{row_dict['Code']}"
         trade_date = parse_date(row_dict["Date"])
         quantity = parse_decimal(row_dict["Quantity"])
-        price = parse_decimal(row_dict["Price *"])
-        fees = maybe_decimal(row_dict["Brokerage *"]) or Decimal(0)
-        currency = row_dict["Currency"]
+        price = parse_decimal(row_dict["Price"])
+        fees = maybe_decimal(row_dict["Brokerage"]) or Decimal(0)
+        currency = row_dict["Instrument Currency"]
         description = row_dict["Comments"]
         broker = "Sharesight"
         gbp_value = maybe_decimal(row_dict["Value"])
