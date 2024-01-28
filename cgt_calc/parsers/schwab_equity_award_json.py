@@ -58,7 +58,7 @@ def action_from_str(label: str) -> ActionType:
     }:
         return ActionType.TRANSFER
 
-    if label in {"Stock Plan Activity", "Deposit"}:
+    if label in {"Lapse", "Stock Plan Activity", "Deposit"}:
         return ActionType.STOCK_ACTIVITY
 
     if label in ["Qualified Dividend", "Cash Dividend"]:
@@ -166,6 +166,30 @@ class SchwabTransaction(BrokerTransaction):
                 f'{row["transactionDetails"][0]["awardDate"]} '
                 f'(ID {row["transactionDetails"][0]["awardName"]})'
             )
+        elif row["action"] == "Lapse":
+            if len(row["transactionDetails"]) != 1:
+                raise ParsingError(
+                    file,
+                    "Expected a single transactionDetails for a Lapse, but "
+                    f"found {len(row['transactionDetails'])}",
+                )
+            date = datetime.datetime.strptime(
+                row["date"], "%m/%d/%Y"
+            ).date()
+            details = row["transactionDetails"][0]["details"]
+            # Schwab only provide this one as string:
+            price = _decimal_from_str(
+                details["fairMarketValuePrice"]
+            )
+            # Make sure to take the quantity after withholding taxes
+            quantity = _decimal_from_str(details["netSharesDeposited"])
+            if amount is None or amount == Decimal(0):
+                amount = price * quantity
+            description = (
+                f"Vest from Award Date "
+                f'{details["awardDate"]} '
+                f'(ID {details["awardId"]})'
+            )
         elif row["action"] == "Sale":
             # Schwab's data export shows the settlement date,
             # whereas HMRC wants the trade date:
@@ -236,9 +260,10 @@ class SchwabTransaction(BrokerTransaction):
             broker,
         )
 
-        self._normalize_split()
+        if symbol == "GOOG":
+            self._normalize_goog_split()
 
-    def _normalize_split(self) -> None:
+    def _normalize_goog_split(self) -> None:
         """Ensure past transactions are normalized to split values.
 
         This is in the context of the 20:1 stock split which happened at close
@@ -269,6 +294,18 @@ def read_schwab_equity_award_json_transactions(
         with Path(transactions_file).open(encoding="utf-8") as json_file:
             try:
                 data = json.load(json_file, parse_float=Decimal, parse_int=Decimal)
+                # schwab json has PascalCase keys in my export, code expects camelCase
+                if "Transactions" in data and isinstance(data["Transactions"], list):
+                    def downcase(orig):
+                        if isinstance(orig, list):
+                            return [downcase(v) for v in orig]
+                        if isinstance(orig, dict):
+                            ret = {}
+                            for k, v in orig.items():
+                                ret[k[:1].lower() + k[1:]] = downcase(v)
+                            return ret
+                        return orig
+                    data = downcase(data)
             except json.decoder.JSONDecodeError as exception:
                 raise ParsingError(
                     transactions_file,

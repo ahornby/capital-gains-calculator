@@ -107,6 +107,7 @@ class SchwabTransaction(BrokerTransaction):
     def __init__(
         self,
         row: list[str],
+        headers: list[str],
         file: str,
     ):
         """Create transaction from CSV row."""
@@ -128,8 +129,10 @@ class SchwabTransaction(BrokerTransaction):
         if symbol is not None:
             symbol = TICKER_RENAMES.get(symbol, symbol)
         description = row[3]
-        quantity = Decimal(row[4].replace(",", "")) if row[4] != "" else None
-        price = Decimal(row[5].replace("$", "")) if row[5] != "" else None
+        quantity_index = headers.index("Quantity")
+        quantity = Decimal(row[quantity_index].replace(",", "")) if row[quantity_index] != "" else None
+        price_index = headers.index("Price")
+        price = Decimal(row[price_index].replace("$", "")) if row[price_index] != "" else None
         fees = Decimal(row[6].replace("$", "")) if row[6] != "" else Decimal(0)
         amount = Decimal(row[7].replace("$", "")) if row[7] != "" else None
 
@@ -150,10 +153,10 @@ class SchwabTransaction(BrokerTransaction):
 
     @staticmethod
     def create(
-        row: list[str], file: str, awards_prices: AwardPrices
+        row: list[str], headers, file: str, awards_prices: AwardPrices
     ) -> SchwabTransaction:
         """Create and post process a SchwabTransaction."""
-        transaction = SchwabTransaction(row, file)
+        transaction = SchwabTransaction(row, headers, file)
         if (
             transaction.price is None
             and transaction.action == ActionType.STOCK_ACTIVITY
@@ -165,9 +168,13 @@ class SchwabTransaction(BrokerTransaction):
             # for awards which don't match the PDF statements.
             # We want to make sure to match date and price form the awards
             # spreadsheet.
-            transaction.date, transaction.price = awards_prices.get(
-                transaction.date, symbol
-            )
+            try:
+                transaction.date, transaction.price = awards_prices.get(
+                    transaction.date, symbol
+                )
+            except KeyError:
+                # if you hold awarded stock after leaving the company there is no most recent award to override the date
+                pass
         return transaction
 
 
@@ -190,7 +197,7 @@ def read_schwab_transactions(
                 "Fees & Comm",
                 "Amount",
             ]
-            if not lines[0] == headers:
+            if not sorted(lines[0]) == sorted(headers):
                 raise ParsingError(
                     transactions_file,
                     "First line of Schwab transactions file must be something like "
@@ -204,16 +211,16 @@ def read_schwab_transactions(
                     " with 8 columns",
                 )
 
-            if "Total" not in lines[-1][0]:
-                raise ParsingError(
-                    transactions_file,
-                    "Last line of Schwab transactions file must be total",
-                )
+            # Save and trim actual header line
+            headers = lines[0]
+            lines = lines[1:    ]
 
-            # Remove headers and footer
-            lines = lines[1:-1]
+            if "Total" in lines[-1][0]:
+                # remove footer if present
+                lines = lines[:-1]
+
             transactions = [
-                SchwabTransaction.create(row, transactions_file, awards_prices)
+                SchwabTransaction.create(row, headers, transactions_file, awards_prices)
                 for row in lines
             ]
             transactions.reverse()

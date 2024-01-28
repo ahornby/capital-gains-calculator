@@ -9,7 +9,10 @@ from pathlib import Path
 
 from cgt_calc.const import DEFAULT_INITIAL_PRICES_FILE
 from cgt_calc.exceptions import UnexpectedColumnCountError
-from cgt_calc.model import BrokerTransaction
+from cgt_calc.model import (
+    ActionType,
+    BrokerTransaction
+)
 from cgt_calc.resources import RESOURCES_PACKAGE
 
 from .mssb import read_mssb_transactions
@@ -61,6 +64,9 @@ def read_broker_transactions(
         print("INFO: No schwab file provided")
 
     if schwab_equity_award_json_transactions_file is not None:
+        # remove stock plan activity from the transaction file that have no price, they come from the JSON instead
+        transactions = [t for t in transactions if not (t.price is None and t.action == ActionType.STOCK_ACTIVITY)]
+
         transactions += read_schwab_equity_award_json_transactions(
             schwab_equity_award_json_transactions_file
         )

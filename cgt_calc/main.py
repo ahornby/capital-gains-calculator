@@ -508,8 +508,9 @@ class CapitalGainsCalculator:
             allowable_cost = current_amount * disposal_quantity / current_quantity
             chargeable_gain += proceeds_amount - allowable_cost
             LOGGER.debug(
-                "SECTION 104, quantity %d, gain %s, proceeds amount %s, "
+                "SECTION 104, Disposed %s, quantity %d, gain %s, proceeds amount %s, "
                 "allowable cost %s",
+                date_index,
                 disposal_quantity,
                 proceeds_amount - allowable_cost,
                 proceeds_amount,
